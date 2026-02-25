@@ -30,7 +30,5 @@ int main(int argc, char *argv[])
 
     auto index = stepper.BuildIndex();
 
-    stepper.PrintIndex(index, cout);
-
     return 0;
 }

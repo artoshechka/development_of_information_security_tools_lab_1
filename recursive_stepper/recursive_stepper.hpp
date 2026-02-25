@@ -33,11 +33,6 @@ class RecursiveStepper
     /// @return Индекс файловой системы
     FilesystemIndex BuildIndex() const;
 
-    /// @brief Вывести построенную карту файловой системы
-    /// @param[in] index индекс файловой системы
-    /// @param[in,out] stream поток для вывода
-    void PrintIndex(const FilesystemIndex &index, QTextStream &stream) const;
-
   private:
     QString dirPath_; ///< Путь до директории для начала обхода
 };
