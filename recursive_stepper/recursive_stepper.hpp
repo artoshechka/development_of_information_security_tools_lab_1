@@ -1,6 +1,7 @@
 /// @file
 /// @brief Объявление класса для рекурсивного обхода директорий
 /// @author Artemenko Anton
+#pragma once
 #ifndef GUID_A9769D40_774C_4FF9_A4A3_8FF1912B4011
 #define GUID_A9769D40_774C_4FF9_A4A3_8FF1912B4011
 
