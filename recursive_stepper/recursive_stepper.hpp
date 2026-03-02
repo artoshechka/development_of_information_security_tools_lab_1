@@ -1,6 +1,7 @@
 /// @file
 /// @brief Объявление класса для рекурсивного обхода директорий
 /// @author Artemenko Anton
+#pragma once
 #ifndef GUID_A9769D40_774C_4FF9_A4A3_8FF1912B4011
 #define GUID_A9769D40_774C_4FF9_A4A3_8FF1912B4011
 
@@ -32,11 +33,6 @@ class RecursiveStepper
     /// @brief Построить индекс файловой системы
     /// @return Индекс файловой системы
     FilesystemIndex BuildIndex() const;
-
-    /// @brief Вывести построенную карту файловой системы
-    /// @param[in] index индекс файловой системы
-    /// @param[in,out] stream поток для вывода
-    void PrintIndex(const FilesystemIndex &index, QTextStream &stream) const;
 
   private:
     QString dirPath_; ///< Путь до директории для начала обхода

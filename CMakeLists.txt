@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.4)
+cmake_minimum_required(VERSION 3.2)
 project(recursive_encoder LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -8,13 +8,15 @@ find_package(QT NAMES Qt5 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
 
 add_subdirectory(recursive_stepper)
+add_subdirectory(crypto_manager)
 
-add_executable(recursive_encoder
+add_executable(${PROJECT_NAME}
   main.cpp
 )
 
-target_link_libraries(recursive_encoder
+target_link_libraries(${PROJECT_NAME}
     PRIVATE
         Qt${QT_VERSION_MAJOR}::Core
         recursive_stepper
+        crypto_manager
 )

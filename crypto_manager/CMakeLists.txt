@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.2)
-project(recursive_stepper LANGUAGES CXX)
+project(crypto_manager LANGUAGES CXX)
 
 add_library(${PROJECT_NAME} STATIC
-    src/recursive_stepper.cpp
+    src/crypto_manager.cpp
 )
 
 find_package(QT NAMES Qt5 REQUIRED COMPONENTS Core)
