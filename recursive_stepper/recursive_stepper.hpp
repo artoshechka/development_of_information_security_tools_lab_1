@@ -15,7 +15,7 @@ namespace recursive_stepper
 {
 
 /// @brief Переопределение для вектора путей до файлов
-using FilesystemIndex = QVector<QString>;
+using FileSystemIndex = QVector<QString>;
 
 /// @brief Класс, реализующий рекурсивный обход директорий
 class RecursiveStepper
@@ -27,7 +27,7 @@ class RecursiveStepper
 
     /// @brief Построить индекс файловой системы
     /// @return Индекс файловой системы
-    FilesystemIndex BuildIndex() const;
+    FileSystemIndex BuildIndex() const;
 
   private:
     QString dirPath_; ///< Путь до директории для начала обхода
