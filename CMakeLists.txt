@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required(VERSION 3.16)
 project(recursive_encoder LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -16,7 +16,7 @@ add_executable(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
-        Qt${QT_VERSION_MAJOR}::Core
-        recursive_stepper
-        crypto_manager
+    crypto_manager
+    recursive_stepper
+    Qt${QT_VERSION_MAJOR}::Core
 )
