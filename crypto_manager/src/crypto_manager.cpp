@@ -17,159 +17,163 @@ namespace
 {
 
 /// Сигнатура зашифрованного файла
-static const QByteArray MAGIC = "A5E2BDE2-21FD-4D6B-A905-78A326846E07";
+static const QByteArray FILE_MAGIC_SIGNATURE = "A5E2BDE2-21FD-4D6B-A905-78A326846E07";
 
 /// @brief Генерация криптографического ключа из пароля.
-/// @param[in] password Пароль пользователя.
+/// @param[in] userPassword Пароль пользователя.
 /// @return 32-байтовый ключ (SHA-256), подходящий для AES-256.
-static QByteArray deriveKey(const QString &password)
+static QByteArray deriveKey(const QString &userPassword)
 {
-    return QCryptographicHash::hash(password.toUtf8(), QCryptographicHash::Sha256);
+    return QCryptographicHash::hash(userPassword.toUtf8(), QCryptographicHash::Sha256);
 }
 
 } // namespace
 
 OpenSSLCryptoManager &OpenSSLCryptoManager::Instance()
 {
-    static OpenSSLCryptoManager instance;
-    return instance;
+    static OpenSSLCryptoManager singletonInstance;
+    return singletonInstance;
 }
 
 bool OpenSSLCryptoManager::EncryptFile(const QString &filePath, const QString &password)
 {
-    QFile file(filePath);
+    QFile inputFile(filePath);
 
-    if (!file.open(QIODevice::ReadOnly))
+    if (!inputFile.open(QIODevice::ReadOnly))
         return false;
 
-    QByteArray data = file.readAll();
-    file.close();
+    QByteArray fileContent = inputFile.readAll();
+    inputFile.close();
 
-    if (data.startsWith(MAGIC))
+    if (fileContent.startsWith(FILE_MAGIC_SIGNATURE))
         return false;
 
-    QByteArray key = deriveKey(password);
+    QByteArray encryptionKey = deriveKey(password);
 
-    unsigned char iv[16];
+    unsigned char initializationVector[16];
 
-    if (!RAND_bytes(iv, sizeof(iv)))
+    if (!RAND_bytes(initializationVector, sizeof(initializationVector)))
         return false;
 
-    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    EVP_CIPHER_CTX *cipherContext = EVP_CIPHER_CTX_new();
 
-    if (!ctx)
+    if (!cipherContext)
         return false;
 
-    QByteArray encrypted(data.size() + 16, 0);
+    QByteArray encryptedData(fileContent.size() + 16, 0);
 
-    int len = 0;
-    int ciphertext_len = 0;
+    int bytesProcessed = 0;
+    int totalCiphertextLength = 0;
 
-    if (!EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, reinterpret_cast<const unsigned char *>(key.data()), iv))
+    if (!EVP_EncryptInit_ex(cipherContext, EVP_aes_256_cbc(), nullptr,
+                            reinterpret_cast<const unsigned char *>(encryptionKey.data()), initializationVector))
     {
-        EVP_CIPHER_CTX_free(ctx);
+        EVP_CIPHER_CTX_free(cipherContext);
         return false;
     }
 
-    if (!EVP_EncryptUpdate(ctx, reinterpret_cast<unsigned char *>(encrypted.data()), &len,
-                           reinterpret_cast<const unsigned char *>(data.data()), data.size()))
+    if (!EVP_EncryptUpdate(cipherContext, reinterpret_cast<unsigned char *>(encryptedData.data()), &bytesProcessed,
+                           reinterpret_cast<const unsigned char *>(fileContent.data()), fileContent.size()))
     {
-        EVP_CIPHER_CTX_free(ctx);
+        EVP_CIPHER_CTX_free(cipherContext);
         return false;
     }
 
-    ciphertext_len = len;
+    totalCiphertextLength = bytesProcessed;
 
-    if (!EVP_EncryptFinal_ex(ctx, reinterpret_cast<unsigned char *>(encrypted.data()) + len, &len))
+    if (!EVP_EncryptFinal_ex(cipherContext, reinterpret_cast<unsigned char *>(encryptedData.data()) + bytesProcessed,
+                             &bytesProcessed))
     {
-        EVP_CIPHER_CTX_free(ctx);
+        EVP_CIPHER_CTX_free(cipherContext);
         return false;
     }
 
-    ciphertext_len += len;
+    totalCiphertextLength += bytesProcessed;
 
-    EVP_CIPHER_CTX_free(ctx);
+    EVP_CIPHER_CTX_free(cipherContext);
 
-    encrypted.resize(ciphertext_len);
+    encryptedData.resize(totalCiphertextLength);
 
-    QFile outFile(filePath);
+    QFile outputFile(filePath);
 
-    if (!outFile.open(QIODevice::WriteOnly))
+    if (!outputFile.open(QIODevice::WriteOnly))
         return false;
 
-    outFile.write(MAGIC);
-    outFile.write(reinterpret_cast<char *>(iv), sizeof(iv));
-    outFile.write(encrypted);
+    outputFile.write(FILE_MAGIC_SIGNATURE);
+    outputFile.write(reinterpret_cast<char *>(initializationVector), sizeof(initializationVector));
+    outputFile.write(encryptedData);
 
-    outFile.close();
+    outputFile.close();
 
     return true;
 }
 
 bool OpenSSLCryptoManager::DecryptFile(const QString &filePath, const QString &password)
 {
-    QFile file(filePath);
+    QFile inputFile(filePath);
 
-    if (!file.open(QIODevice::ReadOnly))
+    if (!inputFile.open(QIODevice::ReadOnly))
         return false;
 
-    QByteArray data = file.readAll();
-    file.close();
+    QByteArray fileContent = inputFile.readAll();
+    inputFile.close();
 
-    if (!data.startsWith(MAGIC))
+    if (!fileContent.startsWith(FILE_MAGIC_SIGNATURE))
         return false;
 
-    QByteArray key = deriveKey(password);
+    QByteArray decryptionKey = deriveKey(password);
 
-    QByteArray iv = data.mid(MAGIC.size(), 16);
-    QByteArray encrypted = data.mid(MAGIC.size() + 16);
+    QByteArray initializationVector = fileContent.mid(FILE_MAGIC_SIGNATURE.size(), 16);
+    QByteArray encryptedData = fileContent.mid(FILE_MAGIC_SIGNATURE.size() + 16);
 
-    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    EVP_CIPHER_CTX *cipherContext = EVP_CIPHER_CTX_new();
 
-    if (!ctx)
+    if (!cipherContext)
         return false;
 
-    QByteArray decrypted(encrypted.size(), 0);
+    QByteArray decryptedData(encryptedData.size(), 0);
 
-    int len = 0;
-    int plaintext_len = 0;
+    int bytesProcessed = 0;
+    int totalPlaintextLength = 0;
 
-    if (!EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, reinterpret_cast<const unsigned char *>(key.data()),
-                            reinterpret_cast<const unsigned char *>(iv.data())))
+    if (!EVP_DecryptInit_ex(cipherContext, EVP_aes_256_cbc(), nullptr,
+                            reinterpret_cast<const unsigned char *>(decryptionKey.data()),
+                            reinterpret_cast<const unsigned char *>(initializationVector.data())))
     {
-        EVP_CIPHER_CTX_free(ctx);
+        EVP_CIPHER_CTX_free(cipherContext);
         return false;
     }
 
-    if (!EVP_DecryptUpdate(ctx, reinterpret_cast<unsigned char *>(decrypted.data()), &len,
-                           reinterpret_cast<const unsigned char *>(encrypted.data()), encrypted.size()))
+    if (!EVP_DecryptUpdate(cipherContext, reinterpret_cast<unsigned char *>(decryptedData.data()), &bytesProcessed,
+                           reinterpret_cast<const unsigned char *>(encryptedData.data()), encryptedData.size()))
     {
-        EVP_CIPHER_CTX_free(ctx);
+        EVP_CIPHER_CTX_free(cipherContext);
         return false;
     }
 
-    plaintext_len = len;
+    totalPlaintextLength = bytesProcessed;
 
-    if (!EVP_DecryptFinal_ex(ctx, reinterpret_cast<unsigned char *>(decrypted.data()) + len, &len))
+    if (!EVP_DecryptFinal_ex(cipherContext, reinterpret_cast<unsigned char *>(decryptedData.data()) + bytesProcessed,
+                             &bytesProcessed))
     {
-        EVP_CIPHER_CTX_free(ctx);
+        EVP_CIPHER_CTX_free(cipherContext);
         return false;
     }
 
-    plaintext_len += len;
+    totalPlaintextLength += bytesProcessed;
 
-    EVP_CIPHER_CTX_free(ctx);
+    EVP_CIPHER_CTX_free(cipherContext);
 
-    decrypted.resize(plaintext_len);
+    decryptedData.resize(totalPlaintextLength);
 
-    QFile outFile(filePath);
+    QFile outputFile(filePath);
 
-    if (!outFile.open(QIODevice::WriteOnly))
+    if (!outputFile.open(QIODevice::WriteOnly))
         return false;
 
-    outFile.write(decrypted);
+    outputFile.write(decryptedData);
 
-    outFile.close();
+    outputFile.close();
 
     return true;
 }
