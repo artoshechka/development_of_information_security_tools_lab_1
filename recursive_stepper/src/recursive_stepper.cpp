@@ -6,16 +6,16 @@
 #include <QDateTime>
 #include <QDirIterator>
 
-using recursive_stepper::FilesystemIndex;
+using recursive_stepper::FileSystemIndex;
 using recursive_stepper::RecursiveStepper;
 
 RecursiveStepper::RecursiveStepper(const QString &dirPath) noexcept : dirPath_(std::move(dirPath))
 {
 }
 
-FilesystemIndex RecursiveStepper::BuildIndex() const
+FileSystemIndex RecursiveStepper::BuildIndex() const
 {
-    FilesystemIndex index;
+    FileSystemIndex index;
 
     QDirIterator it(dirPath_, QDir::AllEntries | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
 
