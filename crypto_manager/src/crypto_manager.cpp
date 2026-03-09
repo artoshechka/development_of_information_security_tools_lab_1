@@ -17,7 +17,7 @@ namespace
 {
 
 /// Сигнатура зашифрованного файла
-static const QByteArray MAGIC = "ENCFILE1";
+static const QByteArray MAGIC = "A5E2BDE2-21FD-4D6B-A905-78A326846E07";
 
 /// @brief Генерация криптографического ключа из пароля.
 /// @param[in] password Пароль пользователя.
@@ -45,7 +45,6 @@ bool OpenSSLCryptoManager::EncryptFile(const QString &filePath, const QString &p
     QByteArray data = file.readAll();
     file.close();
 
-    // Проверка: уже зашифрован?
     if (data.startsWith(MAGIC))
         return false;
 
@@ -117,7 +116,6 @@ bool OpenSSLCryptoManager::DecryptFile(const QString &filePath, const QString &p
     QByteArray data = file.readAll();
     file.close();
 
-    // Проверка: файл зашифрован?
     if (!data.startsWith(MAGIC))
         return false;
 
