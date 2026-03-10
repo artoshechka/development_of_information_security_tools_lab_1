@@ -8,14 +8,18 @@
 #include <QDir>
 #include <QTextStream>
 
+namespace
+{
+/// @brief Сообщение об ошибке при неправильном использовании программы
+const QString &errorMsg = "Usage:\nprogram encrypt <path>\nprogram decrypt <path>\n";
+} // namespace
+
 /// @brief Точка входа в программу.
 /// @param[in] argc количество аргументов командной строки
 /// @param[in] argv массив аргументов командной строки
 /// @return код завершения приложения
 int main(int argc, char *argv[])
 {
-    QCoreApplication app(argc, argv);
-
     QTextStream cin(stdin);
     QTextStream cout(stdout);
     QTextStream cerr(stderr);
@@ -31,9 +35,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        cout << "Usage:\n";
-        cout << "  program encrypt <path>\n";
-        cout << "  program decrypt <path>\n";
+        cerr << errorMsg;
         return 1;
     }
 
@@ -52,11 +54,7 @@ int main(int argc, char *argv[])
     const auto &stepper = std::make_shared<recursive_stepper::RecursiveStepper>(path);
     const auto &encoder = crypto_manager::GetCryptoManager();
 
-    auto index = stepper->BuildIndex();
-
-    int processed = 0;
-
-    for (const auto &file : index)
+    for (const auto &file : stepper->BuildIndex())
     {
         bool result = false;
 
@@ -70,22 +68,19 @@ int main(int argc, char *argv[])
         }
         else
         {
-            cerr << "Unknown mode\n";
+            cerr << errorMsg;
             return 1;
         }
 
         if (result)
         {
-            cout << "Processed: " << file << "\n";
-            processed++;
+            cout << "File processed: " << file << "\n";
         }
         else
         {
-            cout << "Skipped: " << file << "\n";
+            cout << "File skipped: " << file << "\n";
         }
     }
-
-    cout << "\nTotal processed: " << processed << "\n";
 
     return 0;
 }
