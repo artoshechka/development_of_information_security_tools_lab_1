@@ -28,9 +28,17 @@ static bool writeAll(QSaveFile &outputFile, const char *data, const qint64 size)
     return outputFile.write(data, size) == size;
 }
 
+static void secureClearVector(std::vector<unsigned char> &data)
+{
+    if (!data.empty())
+    {
+        OPENSSL_cleanse(data.data(), data.size());
+        data.clear();
+    }
+}
+
 /// @brief Чтение и шифрование файла по частям.
-static bool encryptStream(QFile &inputFile, QSaveFile &outputFile, EVP_CIPHER_CTX *cipherContext,
-                          EVP_MAC_CTX *hmacContext)
+static bool encryptStream(QFile &inputFile, QSaveFile &outputFile, EVP_CIPHER_CTX *cipherContext)
 {
     while (!inputFile.atEnd())
     {
@@ -55,12 +63,6 @@ static bool encryptStream(QFile &inputFile, QSaveFile &outputFile, EVP_CIPHER_CT
             return false;
         }
 
-        if (outputLength > 0 &&
-            EVP_MAC_update(hmacContext, reinterpret_cast<const unsigned char *>(encryptedChunk.constData()),
-                           static_cast<size_t>(outputLength)) != 1)
-        {
-            return false;
-        }
     }
 
     QByteArray finalChunk(EVP_MAX_BLOCK_LENGTH, 0);
@@ -76,19 +78,12 @@ static bool encryptStream(QFile &inputFile, QSaveFile &outputFile, EVP_CIPHER_CT
         return false;
     }
 
-    if (finalLength > 0 &&
-        EVP_MAC_update(hmacContext, reinterpret_cast<const unsigned char *>(finalChunk.constData()),
-                   static_cast<size_t>(finalLength)) != 1)
-    {
-        return false;
-    }
-
     return true;
 }
 
 /// @brief Чтение и дешифрование файла по частям.
 static bool decryptStream(QFile &inputFile, QSaveFile &outputFile, EVP_CIPHER_CTX *cipherContext,
-                          EVP_MAC_CTX *hmacContext, qint64 encryptedPayloadSize)
+                          qint64 encryptedPayloadSize)
 {
     qint64 bytesRemaining = encryptedPayloadSize;
 
@@ -104,12 +99,6 @@ static bool decryptStream(QFile &inputFile, QSaveFile &outputFile, EVP_CIPHER_CT
 
         bytesRemaining -= chunk.size();
 
-        if (EVP_MAC_update(hmacContext, reinterpret_cast<const unsigned char *>(chunk.constData()),
-                           static_cast<size_t>(chunk.size())) != 1)
-        {
-            return false;
-        }
-
         QByteArray decryptedChunk(chunk.size() + EVP_MAX_BLOCK_LENGTH, 0);
         int outputLength = 0;
 
@@ -123,19 +112,6 @@ static bool decryptStream(QFile &inputFile, QSaveFile &outputFile, EVP_CIPHER_CT
         {
             return false;
         }
-    }
-
-    QByteArray finalChunk(EVP_MAX_BLOCK_LENGTH, 0);
-    int finalLength = 0;
-
-    if (!EVP_DecryptFinal_ex(cipherContext, reinterpret_cast<unsigned char *>(finalChunk.data()), &finalLength))
-    {
-        return false;
-    }
-
-    if (finalLength > 0 && !writeAll(outputFile, finalChunk.constData(), static_cast<qint64>(finalLength)))
-    {
-        return false;
     }
 
     return true;
@@ -177,20 +153,18 @@ bool OpenSSLCryptoManager::EncryptFile(const QString &filePath, const QString &p
     }
 
     QByteArray encryptionKey;
-    QByteArray authKey;
-    if (!DeriveKeys(password, passwordSalt, encryptionKey, authKey))
+    if (!DeriveEncryptionKey(password, passwordSalt, encryptionKey))
     {
         outputFile.cancelWriting();
         return false;
     }
 
-    std::vector<unsigned char> initializationVector(kAesInitializationVectorSize);
+    std::vector<unsigned char> nonce(kAesGcmNonceSize);
 
-    if (!RAND_bytes(initializationVector.data(), initializationVector.size()))
+    if (!RAND_bytes(nonce.data(), nonce.size()))
     {
         outputFile.cancelWriting();
         SecureClear(encryptionKey);
-        SecureClear(authKey);
         SecureClear(passwordSalt);
         return false;
     }
@@ -200,60 +174,49 @@ bool OpenSSLCryptoManager::EncryptFile(const QString &filePath, const QString &p
     {
         outputFile.cancelWriting();
         SecureClear(encryptionKey);
-        SecureClear(authKey);
         SecureClear(passwordSalt);
         return false;
     }
 
-    HmacState hmacState;
-    if (!InitializeHmacState(authKey, hmacState))
+    if (!EVP_EncryptInit_ex(cipherContext.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) ||
+        !EVP_CIPHER_CTX_ctrl(cipherContext.get(), EVP_CTRL_GCM_SET_IVLEN, static_cast<int>(nonce.size()), nullptr) ||
+        !EVP_EncryptInit_ex(cipherContext.get(), nullptr, nullptr,
+                            reinterpret_cast<const unsigned char *>(encryptionKey.constData()), nonce.data()))
     {
         outputFile.cancelWriting();
         SecureClear(encryptionKey);
-        SecureClear(authKey);
-        SecureClear(passwordSalt);
-        return false;
-    }
-
-    if (!EVP_EncryptInit_ex(cipherContext.get(), EVP_aes_256_cbc(), nullptr,
-                            reinterpret_cast<const unsigned char *>(encryptionKey.data()), initializationVector.data()))
-    {
-        outputFile.cancelWriting();
-        SecureClear(encryptionKey);
+        secureClearVector(nonce);
         SecureClear(passwordSalt);
         return false;
     }
 
     if (!writeAll(outputFile, kFileMagicSignature.constData(), kFileMagicSignature.size()) ||
         !writeAll(outputFile, passwordSalt.constData(), passwordSalt.size()) ||
-        !writeAll(outputFile, reinterpret_cast<const char *>(initializationVector.data()),
-                  static_cast<qint64>(initializationVector.size())) ||
-        !encryptStream(inputFile, outputFile, cipherContext.get(), hmacState.context_.get()))
+        !writeAll(outputFile, reinterpret_cast<const char *>(nonce.data()), static_cast<qint64>(nonce.size())) ||
+        !encryptStream(inputFile, outputFile, cipherContext.get()))
     {
         outputFile.cancelWriting();
         SecureClear(encryptionKey);
-        SecureClear(authKey);
+        secureClearVector(nonce);
         SecureClear(passwordSalt);
         return false;
     }
 
-    QByteArray authTag(kHmacTagSize, Qt::Uninitialized);
-    size_t authTagLength = 0;
-    if (EVP_MAC_final(hmacState.context_.get(), reinterpret_cast<unsigned char *>(authTag.data()), &authTagLength,
-                      static_cast<size_t>(authTag.size())) != 1 ||
-        authTagLength != kHmacTagSize || !writeAll(outputFile, authTag.constData(), authTag.size()) ||
-        !outputFile.commit())
+    QByteArray authTag(kAesGcmTagSize, Qt::Uninitialized);
+    if (!EVP_CIPHER_CTX_ctrl(cipherContext.get(), EVP_CTRL_GCM_GET_TAG, static_cast<int>(authTag.size()),
+                             authTag.data()) ||
+        !writeAll(outputFile, authTag.constData(), authTag.size()) || !outputFile.commit())
     {
         outputFile.cancelWriting();
         SecureClear(encryptionKey);
-        SecureClear(authKey);
+        secureClearVector(nonce);
         SecureClear(passwordSalt);
         SecureClear(authTag);
         return false;
     }
 
     SecureClear(encryptionKey);
-    SecureClear(authKey);
+    secureClearVector(nonce);
     SecureClear(passwordSalt);
     SecureClear(authTag);
 
@@ -276,24 +239,24 @@ bool OpenSSLCryptoManager::DecryptFile(const QString &filePath, const QString &p
     if (passwordSalt.size() != kPasswordSaltSize)
         return false;
 
-    QByteArray initializationVector = inputFile.read(kAesInitializationVectorSize);
+    QByteArray nonce = inputFile.read(kAesGcmNonceSize);
 
-    if (initializationVector.size() != kAesInitializationVectorSize)
+    if (nonce.size() != kAesGcmNonceSize)
         return false;
 
-    const qint64 headerSize = kFileMagicSignature.size() + kPasswordSaltSize + kAesInitializationVectorSize;
+    const qint64 headerSize = kFileMagicSignature.size() + kPasswordSaltSize + kAesGcmNonceSize;
     const qint64 encryptedFileSize = inputFile.size();
 
-    if (encryptedFileSize < headerSize + kHmacTagSize)
+    if (encryptedFileSize < headerSize + kAesGcmTagSize)
         return false;
 
-    const qint64 encryptedPayloadSize = encryptedFileSize - headerSize - kHmacTagSize;
+    const qint64 encryptedPayloadSize = encryptedFileSize - headerSize - kAesGcmTagSize;
 
     QByteArray decryptionKey;
-    QByteArray authKey;
-    if (!DeriveKeys(password, passwordSalt, decryptionKey, authKey))
+    if (!DeriveEncryptionKey(password, passwordSalt, decryptionKey))
     {
         SecureClear(passwordSalt);
+        SecureClear(nonce);
         return false;
     }
 
@@ -301,8 +264,8 @@ bool OpenSSLCryptoManager::DecryptFile(const QString &filePath, const QString &p
     if (!outputFile.open(QIODevice::WriteOnly))
     {
         SecureClear(decryptionKey);
-        SecureClear(authKey);
         SecureClear(passwordSalt);
+        SecureClear(nonce);
         return false;
     }
 
@@ -311,64 +274,76 @@ bool OpenSSLCryptoManager::DecryptFile(const QString &filePath, const QString &p
     {
         outputFile.cancelWriting();
         SecureClear(decryptionKey);
-        SecureClear(authKey);
         SecureClear(passwordSalt);
+        SecureClear(nonce);
         return false;
     }
 
-    if (!EVP_DecryptInit_ex(cipherContext.get(), EVP_aes_256_cbc(), nullptr,
-                            reinterpret_cast<const unsigned char *>(decryptionKey.data()),
-                            reinterpret_cast<const unsigned char *>(initializationVector.data())))
+    if (!EVP_DecryptInit_ex(cipherContext.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) ||
+        !EVP_CIPHER_CTX_ctrl(cipherContext.get(), EVP_CTRL_GCM_SET_IVLEN, nonce.size(), nullptr) ||
+        !EVP_DecryptInit_ex(cipherContext.get(), nullptr, nullptr,
+                            reinterpret_cast<const unsigned char *>(decryptionKey.constData()),
+                            reinterpret_cast<const unsigned char *>(nonce.constData())))
     {
         outputFile.cancelWriting();
         SecureClear(decryptionKey);
-        SecureClear(authKey);
         SecureClear(passwordSalt);
+        SecureClear(nonce);
         return false;
     }
 
-    HmacState hmacState;
-    if (!InitializeHmacState(authKey, hmacState))
+    if (!decryptStream(inputFile, outputFile, cipherContext.get(), encryptedPayloadSize))
     {
         outputFile.cancelWriting();
         SecureClear(decryptionKey);
-        SecureClear(authKey);
         SecureClear(passwordSalt);
+        SecureClear(nonce);
         return false;
     }
 
-    if (!decryptStream(inputFile, outputFile, cipherContext.get(), hmacState.context_.get(), encryptedPayloadSize))
+    QByteArray authTag = inputFile.read(kAesGcmTagSize);
+
+    if (authTag.size() != kAesGcmTagSize ||
+        !EVP_CIPHER_CTX_ctrl(cipherContext.get(), EVP_CTRL_GCM_SET_TAG, authTag.size(), authTag.data()))
     {
         outputFile.cancelWriting();
         SecureClear(decryptionKey);
-        SecureClear(authKey);
         SecureClear(passwordSalt);
+        SecureClear(nonce);
+        SecureClear(authTag);
         return false;
     }
 
-    const QByteArray expectedAuthTag = inputFile.read(kHmacTagSize);
-    QByteArray actualAuthTag(kHmacTagSize, Qt::Uninitialized);
-    size_t actualAuthTagLength = 0;
+    QByteArray finalChunk(EVP_MAX_BLOCK_LENGTH, 0);
+    int finalLength = 0;
+    if (EVP_DecryptFinal_ex(cipherContext.get(), reinterpret_cast<unsigned char *>(finalChunk.data()), &finalLength) <= 0)
+    {
+        outputFile.cancelWriting();
+        SecureClear(decryptionKey);
+        SecureClear(passwordSalt);
+        SecureClear(nonce);
+        SecureClear(authTag);
+        SecureClear(finalChunk);
+        return false;
+    }
 
-    if (expectedAuthTag.size() != kHmacTagSize ||
-        EVP_MAC_final(hmacState.context_.get(), reinterpret_cast<unsigned char *>(actualAuthTag.data()),
-                      &actualAuthTagLength, static_cast<size_t>(actualAuthTag.size())) != 1 ||
-        actualAuthTagLength != kHmacTagSize ||
-        CRYPTO_memcmp(expectedAuthTag.constData(), actualAuthTag.constData(), kHmacTagSize) != 0 ||
+    if ((finalLength > 0 && !writeAll(outputFile, finalChunk.constData(), static_cast<qint64>(finalLength))) ||
         !outputFile.commit())
     {
         outputFile.cancelWriting();
         SecureClear(decryptionKey);
-        SecureClear(authKey);
         SecureClear(passwordSalt);
-        SecureClear(actualAuthTag);
+        SecureClear(nonce);
+        SecureClear(authTag);
+        SecureClear(finalChunk);
         return false;
     }
 
     SecureClear(decryptionKey);
-    SecureClear(authKey);
     SecureClear(passwordSalt);
-    SecureClear(actualAuthTag);
+    SecureClear(nonce);
+    SecureClear(authTag);
+    SecureClear(finalChunk);
 
     return true;
 }
