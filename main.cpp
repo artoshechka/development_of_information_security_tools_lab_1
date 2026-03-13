@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
     cout.flush();
     QString password = cin.readLine();
 
-    const auto &stepper = std::make_shared<recursive_stepper::RecursiveStepper>(path);
+    const auto &stepper = std::make_unique<recursive_stepper::RecursiveStepper>(path);
     const auto &encoder = crypto_manager::GetCryptoManager();
 
     for (const auto &file : stepper->BuildIndex())
