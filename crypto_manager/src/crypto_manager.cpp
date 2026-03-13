@@ -5,7 +5,6 @@
 #include <src/crypto_manager.hpp>
 
 #include <QByteArray>
-#include <QCryptographicHash>
 #include <QFile>
 #include <QSaveFile>
 #include <QString>
@@ -13,6 +12,7 @@
 #include <memory>
 #include <vector>
 
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
@@ -23,18 +23,56 @@ namespace
 /// Сигнатура зашифрованного файла
 static const QByteArray FILE_MAGIC_SIGNATURE = "A5E2BDE2-21FD-4D6B-A905-78A326846E07";
 
+/// Размер соли для PBKDF2.
+static constexpr int PASSWORD_SALT_SIZE = 16;
+
+/// Размер ключа AES-256.
+static constexpr int AES_KEY_SIZE = 32;
+
+/// Количество итераций PBKDF2.
+static constexpr int PBKDF2_ITERATION_COUNT = 200000;
+
 /// Размер вектора инициализации для AES-CBC.
 static constexpr int AES_INITIALIZATION_VECTOR_SIZE = 16;
 
 /// Размер блока чтения для потоковой обработки файла.
 static constexpr qint64 FILE_PROCESSING_CHUNK_SIZE = 64 * 1024;
 
-/// @brief Генерация криптографического ключа из пароля.
-/// @param[in] userPassword Пароль пользователя.
-/// @return 32-байтовый ключ (SHA-256), подходящий для AES-256.
-static QByteArray deriveKey(const QString &userPassword)
+/// @brief Безопасная очистка чувствительного буфера.
+static void secureClear(QByteArray &data)
 {
-    return QCryptographicHash::hash(userPassword.toUtf8(), QCryptographicHash::Sha256);
+    if (!data.isEmpty())
+    {
+        OPENSSL_cleanse(data.data(), static_cast<size_t>(data.size()));
+        data.clear();
+        data.squeeze();
+    }
+}
+
+/// @brief Генерация криптографического ключа из пароля и соли через PBKDF2.
+/// @param[in] userPassword Пароль пользователя.
+/// @param[in] salt Случайная соль.
+/// @param[out] outKey Итоговый 32-байтовый ключ.
+/// @return True при успешной генерации ключа.
+static bool deriveKey(const QString &userPassword, const QByteArray &salt, QByteArray &outKey)
+{
+    QByteArray passwordBytes = userPassword.toUtf8();
+    outKey.resize(AES_KEY_SIZE);
+
+    const bool isOk = PKCS5_PBKDF2_HMAC(
+                          passwordBytes.constData(), passwordBytes.size(),
+                          reinterpret_cast<const unsigned char *>(salt.constData()), salt.size(),
+                          PBKDF2_ITERATION_COUNT, EVP_sha256(), outKey.size(),
+                          reinterpret_cast<unsigned char *>(outKey.data())) == 1;
+
+    secureClear(passwordBytes);
+
+    if (!isOk)
+    {
+        secureClear(outKey);
+    }
+
+    return isOk;
 }
 
 /// @brief Структура для автоматического освобождения ресурсов EVP_CIPHER_CTX с помощью std::unique_ptr.
@@ -171,33 +209,63 @@ bool OpenSSLCryptoManager::EncryptFile(const QString &filePath, const QString &p
     if (!outputFile.open(QIODevice::WriteOnly))
         return false;
 
-    const QByteArray encryptionKey = deriveKey(password);
+    QByteArray passwordSalt(PASSWORD_SALT_SIZE, Qt::Uninitialized);
+
+    if (!RAND_bytes(reinterpret_cast<unsigned char *>(passwordSalt.data()), passwordSalt.size()))
+    {
+        outputFile.cancelWriting();
+        return false;
+    }
+
+    QByteArray encryptionKey;
+    if (!deriveKey(password, passwordSalt, encryptionKey))
+    {
+        outputFile.cancelWriting();
+        return false;
+    }
 
     std::vector<unsigned char> initializationVector(AES_INITIALIZATION_VECTOR_SIZE);
 
     if (!RAND_bytes(initializationVector.data(), initializationVector.size()))
+    {
+        outputFile.cancelWriting();
+        secureClear(encryptionKey);
+        secureClear(passwordSalt);
         return false;
+    }
 
     UniqPtrCipherContext cipherContext(EVP_CIPHER_CTX_new());
     if (!cipherContext)
     {
+        outputFile.cancelWriting();
+        secureClear(encryptionKey);
+        secureClear(passwordSalt);
         return false;
     }
 
     if (!EVP_EncryptInit_ex(cipherContext.get(), EVP_aes_256_cbc(), nullptr,
                             reinterpret_cast<const unsigned char *>(encryptionKey.data()), initializationVector.data()))
     {
+        outputFile.cancelWriting();
+        secureClear(encryptionKey);
+        secureClear(passwordSalt);
         return false;
     }
 
     if (!writeAll(outputFile, FILE_MAGIC_SIGNATURE.constData(), FILE_MAGIC_SIGNATURE.size()) ||
+        !writeAll(outputFile, passwordSalt.constData(), passwordSalt.size()) ||
         !writeAll(outputFile, reinterpret_cast<const char *>(initializationVector.data()),
                   static_cast<qint64>(initializationVector.size())) ||
         !encryptStream(inputFile, outputFile, cipherContext.get()) || !outputFile.commit())
     {
         outputFile.cancelWriting();
+        secureClear(encryptionKey);
+        secureClear(passwordSalt);
         return false;
     }
+
+    secureClear(encryptionKey);
+    secureClear(passwordSalt);
 
     return true;
 }
@@ -213,12 +281,22 @@ bool OpenSSLCryptoManager::DecryptFile(const QString &filePath, const QString &p
     if (fileSignature != FILE_MAGIC_SIGNATURE)
         return false;
 
+    QByteArray passwordSalt = inputFile.read(PASSWORD_SALT_SIZE);
+
+    if (passwordSalt.size() != PASSWORD_SALT_SIZE)
+        return false;
+
     QByteArray initializationVector = inputFile.read(AES_INITIALIZATION_VECTOR_SIZE);
 
     if (initializationVector.size() != AES_INITIALIZATION_VECTOR_SIZE)
         return false;
 
-    const QByteArray decryptionKey = deriveKey(password);
+    QByteArray decryptionKey;
+    if (!deriveKey(password, passwordSalt, decryptionKey))
+    {
+        secureClear(passwordSalt);
+        return false;
+    }
 
     QSaveFile outputFile(filePath);
     if (!outputFile.open(QIODevice::WriteOnly))
@@ -236,14 +314,21 @@ bool OpenSSLCryptoManager::DecryptFile(const QString &filePath, const QString &p
                             reinterpret_cast<const unsigned char *>(initializationVector.data())))
     {
         outputFile.cancelWriting();
+        secureClear(decryptionKey);
+        secureClear(passwordSalt);
         return false;
     }
 
     if (!decryptStream(inputFile, outputFile, cipherContext.get()) || !outputFile.commit())
     {
         outputFile.cancelWriting();
+        secureClear(decryptionKey);
+        secureClear(passwordSalt);
         return false;
     }
+
+    secureClear(decryptionKey);
+    secureClear(passwordSalt);
 
     return true;
 }
