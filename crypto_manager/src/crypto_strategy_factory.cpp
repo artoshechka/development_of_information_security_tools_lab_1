@@ -6,8 +6,7 @@
 #include <src/openssl_crypto_strategy.hpp>
 
 template <>
-std::unique_ptr<crypto_manager::ICryptoStrategy> crypto_manager::CreateCryptoStrategy<
-    crypto_manager::OpenSslCryptoBackendTag>()
+std::unique_ptr<crypto_manager::ICryptoStrategy> crypto_manager::CreateCryptoStrategy<crypto_manager::OpenSslTag>()
 {
     return std::make_unique<OpenSslCryptoStrategy>();
 }

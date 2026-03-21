@@ -19,7 +19,7 @@
 - **main.cpp** — точка входа приложения. Проверяет аргументы командной строки, запрашивает пароль пользователя и координирует обработку файлов.
 - **RecursiveStepper** — класс, отвечающий за рекурсивный обход целевой директории и построение списка файлов для последующей обработки.
 - **ICryptoStrategy / OpenSslCryptoStrategy** — подсистема стратегий шифрования и дешифрования файлов.
-- **CryptoManager + фабрики** — менеджер криптографических операций с внедряемой стратегией, создаваемой через фабрики.
+- **CryptoManager + фабрики** — менеджер криптографических операций с внедряемой стратегией, создаваемой через tag-based template фабрики
 - **QDirIterator / QFile / QSaveFile + OpenSSL EVP** — используются для обхода файловой системы, потокового чтения/записи файлов, атомарной замены результата и криптографических операций.
 
 ## Алгоритм шифрования
@@ -52,10 +52,7 @@
 #### CryptoManager
 ```mermaid
 classDiagram
-    class CryptoBackend {
-        <<enumeration>>
-        OpenSsl
-    }
+    class OpenSslTag
 
     class ICryptoStrategy {
         <<interface>>
@@ -82,26 +79,14 @@ classDiagram
     }
 
     class CryptoStrategyFactory {
-        +CreateCryptoStrategy(backend)
-        +CreateCryptoStrategy()
+        +CreateCryptoStrategy~TBackendTag~()
+        +CreateCryptoStrategy~OpenSslTag~()
     }
 
     class CryptoManagerFactory {
         +CreateCryptoManager(cryptoStrategy)
-        +GetCryptoManager(backend)
-        +GetCryptoManager()
-    }
-
-    class QFile {
-    }
-
-    class QSaveFile {
-    }
-
-    class PKCS5_PBKDF2_HMAC {
-    }
-
-    class EVP_CIPHER_CTX {
+        +GetCryptoManager~TBackendTag~()
+        +GetCryptoManager~OpenSslTag~()
     }
 
     ICryptoManager <|.. CryptoManager
@@ -110,28 +95,19 @@ classDiagram
 
     CryptoManagerFactory ..> CryptoStrategyFactory
     CryptoManagerFactory ..> CryptoManager
-    CryptoStrategyFactory ..> CryptoBackend
+    CryptoStrategyFactory ..> OpenSslTag
+    CryptoManagerFactory ..> OpenSslTag
     CryptoStrategyFactory ..> OpenSslCryptoStrategy
-
-    OpenSslCryptoStrategy ..> QFile
-    OpenSslCryptoStrategy ..> QSaveFile
-    OpenSslCryptoStrategy ..> PKCS5_PBKDF2_HMAC
-    OpenSslCryptoStrategy ..> EVP_CIPHER_CTX
 ```
 
 #### RecursiveStepper
 ```mermaid
 classDiagram
-    class QDirIterator
-    class QFileInfo
-
     class RecursiveStepper {
         -QString dirPath_
         +RecursiveStepper(dirPath)
         +BuildIndex() FileSystemIndex
     }
-    RecursiveStepper ..> QDirIterator
-    RecursiveStepper ..> QFileInfo
 ```
 ## Инструкция для пользователя
 Сборка проекта производится следующим образом:

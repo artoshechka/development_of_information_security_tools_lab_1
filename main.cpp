@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
 
     if (backendName == "openssl")
     {
-        encoder = crypto_manager::GetCryptoManager<crypto_manager::OpenSslCryptoManagerTag>();
+        encoder = crypto_manager::GetCryptoManager<crypto_manager::OpenSslTag>();
     }
 
     if (!encoder)

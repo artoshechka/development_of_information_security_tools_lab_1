@@ -10,8 +10,8 @@
 
 namespace crypto_manager
 {
-/// @brief Fwd decl тега OpenSSL backend для фабрики.
-struct OpenSslCryptoBackendTag;
+/// @brief Fwd decl тега OpenSSL для фабрик.
+struct OpenSslTag;
 
 /// @brief Создает криптографическую стратегию по backend-тегу.
 /// @tparam TBackendTag Тип тега backend'а.
@@ -19,7 +19,7 @@ struct OpenSslCryptoBackendTag;
 template <typename TBackendTag> std::unique_ptr<ICryptoStrategy> CreateCryptoStrategy();
 
 /// @brief Специализация фабрики для OpenSSL backend'а.
-template <> std::unique_ptr<ICryptoStrategy> CreateCryptoStrategy<OpenSslCryptoBackendTag>();
+template <> std::unique_ptr<ICryptoStrategy> CreateCryptoStrategy<OpenSslTag>();
 
 } // namespace crypto_manager
 

@@ -13,8 +13,7 @@ std::shared_ptr<crypto_manager::ICryptoManager> crypto_manager::CreateCryptoMana
 }
 
 template <>
-std::shared_ptr<crypto_manager::ICryptoManager> crypto_manager::GetCryptoManager<
-    crypto_manager::OpenSslCryptoManagerTag>()
+std::shared_ptr<crypto_manager::ICryptoManager> crypto_manager::GetCryptoManager<crypto_manager::OpenSslTag>()
 {
-    return CreateCryptoManager(CreateCryptoStrategy<OpenSslCryptoBackendTag>());
+    return CreateCryptoManager(CreateCryptoStrategy<OpenSslTag>());
 }
