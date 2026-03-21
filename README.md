@@ -18,8 +18,10 @@
 Основные компоненты решения:
 - **main.cpp** — точка входа приложения. Проверяет аргументы командной строки, запрашивает пароль пользователя и координирует обработку файлов.
 - **RecursiveStepper** — класс, отвечающий за рекурсивный обход целевой директории и построение списка файлов для последующей обработки.
-- **ICryptoManager / OpenSSLCryptoManager** — подсистема шифрования и дешифрования файлов на базе OpenSSL с реализацией паттерна Singleton.
-- **crypto_manager::GetCryptoManager** — фабричная функция, возвращающая объект менеджера криптографических операций через интерфейс.
+- **ICryptoStrategy / OpenSslCryptoStrategy** — подсистема стратегий шифрования и дешифрования файлов.
+- **CryptoManager + фабрики** — менеджер криптографических операций с внедряемой стратегией, создаваемой через tag-based template фабрики и получающей системный логгер по ссылке.
+- **AppLogger** — singleton-логгер приложения, который используется в `main.cpp` для фиксации ошибок и ключевых этапов обработки.
+- **AppSysLogger** — singleton-логгер подсистем, создается в `main.cpp` и передается в `RecursiveStepper`, `CryptoManager` и `OpenSslCryptoStrategy` через DI.
 - **QDirIterator / QFile / QSaveFile + OpenSSL EVP** — используются для обхода файловой системы, потокового чтения/записи файлов, атомарной замены результата и криптографических операций.
 
 ## Алгоритм шифрования
@@ -49,96 +51,142 @@
 
 ### UML-диаграмма классов
 
-#### CryptoManager
+#### Общая диаграмма
 ```mermaid
 classDiagram
+    class MainApplication
+
+    class ILogger {
+        <<interface>>
+        +SetSettings(settings)
+        +GetSettings()
+        +Log(level, message, file, line, function)
+    }
+
+    class ThreadSafeLogger {
+        +ThreadSafeLogger(componentName, output)
+        +SetSettings(settings)
+        +GetSettings()
+        +Log(level, message, file, line, function)
+        #FormatMessage(level, message, file, line, function)
+    }
+
+    class AppLogger {
+        +AppLogger(output)
+    }
+
+    class AppSysLogger {
+        +AppSysLogger(output)
+    }
+
+    class LoggerFactory {
+        +GetLogger~AppLoggerTag~()
+        +GetLogger~AppSysLoggerTag~()
+    }
+
+    class LogEntryStream {
+        +LogEntryStream(logger, level, file, line, function)
+        +operator<<()
+    }
+
+    class LoggerSettings {
+        +logFilePath_ : optional~QString~
+        +logLevel_ : LogLevel
+        +output_ : LogOutput
+    }
+
+    class LogLevel {
+        <<enumeration>>
+        Trace
+        Debug
+        Info
+        Warning
+        Error
+        Fatal
+    }
+
+    class LogOutput {
+        <<enumeration>>
+        Console
+        File
+    }
+
+    class OpenSslTag
+
+    class ICryptoStrategy {
+        <<interface>>
+        +EncryptFile(filePath, password)
+        +DecryptFile(filePath, password)
+    }
+
+    class OpenSslCryptoStrategy {
+        -logger_ : shared_ptr~ILogger~
+        +OpenSslCryptoStrategy(const shared_ptr~ILogger~& logger)
+        +EncryptFile(filePath, password)
+        +DecryptFile(filePath, password)
+    }
+
     class ICryptoManager {
         <<interface>>
         +EncryptFile(filePath, password)
         +DecryptFile(filePath, password)
     }
 
-    class OpenSSLCryptoManager {
-        -OpenSSLCryptoManager()
-        +Instance()
+    class CryptoManager {
+        -cryptoStrategy_ : unique_ptr~ICryptoStrategy~
+        -logger_ : shared_ptr~ILogger~
+        +CryptoManager(cryptoStrategy, const shared_ptr~ILogger~& logger)
         +EncryptFile(filePath, password)
         +DecryptFile(filePath, password)
     }
 
-    class QFile {
+    class CryptoStrategyFactory {
+        +CreateCryptoStrategy~TBackendTag~(const shared_ptr~ILogger~& logger)
+        +CreateCryptoStrategy~OpenSslTag~(const shared_ptr~ILogger~& logger)
     }
 
-    class QSaveFile {
+    class CryptoManagerFactory {
+        +CreateCryptoManager(cryptoStrategy, const shared_ptr~ILogger~& logger)
+        +GetCryptoManager~TBackendTag~(const shared_ptr~ILogger~& logger)
+        +GetCryptoManager~OpenSslTag~(const shared_ptr~ILogger~& logger)
     }
-
-    class PKCS5_PBKDF2_HMAC {
-    }
-
-    class EVP_CIPHER_CTX {
-    }
-
-    ICryptoManager <|.. OpenSSLCryptoManager
-    OpenSSLCryptoManager ..> QFile
-    OpenSSLCryptoManager ..> QSaveFile
-    OpenSSLCryptoManager ..> PKCS5_PBKDF2_HMAC
-    OpenSSLCryptoManager ..> EVP_CIPHER_CTX
-```
-
-#### RecursiveStepper
-```mermaid
-classDiagram
-    class QDirIterator
-    class QFileInfo
 
     class RecursiveStepper {
         -QString dirPath_
-        +RecursiveStepper(dirPath)
+        -logger_ : shared_ptr~ILogger~
+        +RecursiveStepper(dirPath, const shared_ptr~ILogger~& logger)
         +BuildIndex() FileSystemIndex
     }
-    RecursiveStepper ..> QDirIterator
-    RecursiveStepper ..> QFileInfo
+
+    ILogger <|.. ThreadSafeLogger
+    ThreadSafeLogger <|-- AppLogger
+    ThreadSafeLogger <|-- AppSysLogger
+    ThreadSafeLogger ..> LoggerSettings
+    LoggerSettings ..> LogLevel
+    LoggerSettings ..> LogOutput
+    LoggerFactory ..> AppLogger
+    LoggerFactory ..> AppSysLogger
+    LogEntryStream ..> ILogger
+
+    ICryptoManager <|.. CryptoManager
+    ICryptoStrategy <|.. OpenSslCryptoStrategy
+    CryptoManager o--> ICryptoStrategy
+    CryptoManager ..> ILogger
+    OpenSslCryptoStrategy ..> ILogger
+    RecursiveStepper ..> ILogger
+
+    MainApplication ..> LoggerFactory
+    MainApplication ..> AppLogger
+    MainApplication ..> AppSysLogger
+    MainApplication ..> CryptoManagerFactory
+    MainApplication ..> RecursiveStepper
+
+    CryptoManagerFactory ..> CryptoStrategyFactory
+    CryptoManagerFactory ..> CryptoManager
+    CryptoStrategyFactory ..> OpenSslCryptoStrategy
+    CryptoStrategyFactory ..> OpenSslTag
+    CryptoManagerFactory ..> OpenSslTag
 ```
-
-### Диаграмма взаимодействия
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant M as main
-    participant RS as RecursiveStepper
-    participant CF as crypto_manager::GetCryptoManager
-    participant CM as OpenSSLCryptoManager
-
-    U->>M: recursive_encoder <MODE> <ENCODING_TARGET>
-    activate M
-    M->>U: Enter password
-    U-->>M: password
-
-    M->>RS: RecursiveStepper(path)
-    M->>CF: GetCryptoManager()
-    CF-->>M: shared_ptr<ICryptoManager>
-
-    M->>RS: BuildIndex()
-    RS-->>M: FileSystemIndex
-
-    loop Для каждого файла
-        alt MODE == encrypt
-            M->>CM: EncryptFile(filePath, password)
-            CM-->>M: bool result
-        else MODE == decrypt
-            M->>CM: DecryptFile(filePath, password)
-            CM-->>M: bool result
-        end
-
-        alt result == true
-            M->>U: File processed: <file>
-        else result == false
-            M->>U: File skipped: <file>
-        end
-    end
-    deactivate M
-```
-
 ## Инструкция для пользователя
 Сборка проекта производится следующим образом:
 

@@ -2,6 +2,8 @@
 /// @brief Главное приложение
 /// @author Artemenko Anton
 #include <crypto_manager_factory.hpp>
+#include <logger_factory.hpp>
+#include <logger_macros.hpp>
 #include <recursive_stepper.hpp>
 
 #include <QCoreApplication>
@@ -26,7 +28,8 @@
 namespace
 {
 /// @brief Сообщение об ошибке при неправильном использовании программы
-const QString &errorMsg = "Usage:\nprogram encrypt <path>\nprogram decrypt <path>\n";
+const QString errorMsg = "Usage:\nprogram encrypt <path>\nprogram decrypt <path>\n"
+                         "Backends: openssl\n";
 
 /// @brief Скрытое чтение пароля из консоли (для Unix/macOS).
 static QString ReadPassword(QTextStream &cin, QTextStream &cout)
@@ -59,7 +62,7 @@ static QString ReadPassword(QTextStream &cin, QTextStream &cout)
 
     return password;
 #else
-    termios oldTerminalAttributes {};
+    termios oldTerminalAttributes{};
     bool echoDisabled = false;
 
     if (tcgetattr(STDIN_FILENO, &oldTerminalAttributes) == 0)
@@ -107,18 +110,34 @@ int main(int argc, char *argv[])
      QTextStream cin(stdin);
     QTextStream cout(stdout);
     QTextStream cerr(stderr);
+    const auto appLogger = logger::GetLogger<logger::AppLoggerTag>();
+    const auto appSysLogger = logger::GetLogger<logger::AppSysLoggerTag>();
 
     QString mode;
     QString path;
+    QString backendName = "openssl";
 
     // Проверка аргументов
     if (argc >= 3)
     {
         mode = argv[1];
         path = QString::fromLocal8Bit(argv[2]);
+
+        if (argc >= 4)
+        {
+            backendName = QString::fromLocal8Bit(argv[3]).toLower();
+
+            if (backendName != "openssl")
+            {
+                LogError(appLogger) << "Unknown backend: " << backendName;
+                cerr << errorMsg;
+                return 1;
+            }
+        }
     }
     else
     {
+        LogError(appLogger) << "Invalid arguments: expected at least mode and path";
         cerr << errorMsg;
         return 1;
     }
@@ -127,7 +146,7 @@ int main(int argc, char *argv[])
 
     if (!dir.exists())
     {
-        cerr << "Directory does not exist\n";
+        LogError(appLogger) << "Directory does not exist: " << path;
         return 1;
     }
 
@@ -135,19 +154,33 @@ int main(int argc, char *argv[])
 
     if (password.isEmpty())
     {
-        cerr << "Password must not be empty\n";
+        LogWarning(appLogger) << "Empty password is not allowed";
         return 1;
     }
 
     if (password.size() > std::numeric_limits<int>::max() / 4)
     {
+        LogError(appLogger) << "Password is too long";
         SecureClear(password);
-        cerr << "Password is too long\n";
         return 1;
     }
 
-    const auto &stepper = std::make_unique<recursive_stepper::RecursiveStepper>(path);
-    const auto &encoder = crypto_manager::GetCryptoManager();
+    const auto &stepper = std::make_unique<recursive_stepper::RecursiveStepper>(path, appSysLogger);
+    std::shared_ptr<crypto_manager::ICryptoManager> encoder;
+
+    if (backendName == "openssl")
+    {
+        encoder = crypto_manager::GetCryptoManager<crypto_manager::OpenSslTag>(appSysLogger);
+    }
+
+    if (!encoder)
+    {
+        LogError(appLogger) << "Failed to create crypto manager for selected backend";
+        SecureClear(password);
+        return 1;
+    }
+
+    LogInfo(appLogger) << "Processing started. Mode: " << mode << ", Path: " << path;
 
     for (const auto &file : stepper->BuildIndex())
     {
@@ -163,6 +196,7 @@ int main(int argc, char *argv[])
         }
         else
         {
+            LogError(appLogger) << "Invalid mode: " << mode;
             SecureClear(password);
             cerr << errorMsg;
             return 1;
@@ -170,10 +204,12 @@ int main(int argc, char *argv[])
 
         if (result)
         {
+            LogInfo(appLogger) << "File processed: " << file;
             cout << "File processed: " << file << "\n";
         }
         else
         {
+            LogWarning(appLogger) << "File skipped: " << file;
             cout << "File skipped: " << file << "\n";
         }
     }

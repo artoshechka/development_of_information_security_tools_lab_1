@@ -14,6 +14,7 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
 
 add_subdirectory(recursive_stepper)
 add_subdirectory(crypto_manager)
+add_subdirectory(logger)
 
 add_executable(${PROJECT_NAME}
   main.cpp
@@ -23,5 +24,6 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
     crypto_manager
     recursive_stepper
+  logger
     Qt${QT_VERSION_MAJOR}::Core
 )
