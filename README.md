@@ -20,6 +20,7 @@
 - **RecursiveStepper** — класс, отвечающий за рекурсивный обход целевой директории и построение списка файлов для последующей обработки.
 - **ICryptoStrategy / OpenSslCryptoStrategy** — подсистема стратегий шифрования и дешифрования файлов.
 - **CryptoManager + фабрики** — менеджер криптографических операций с внедряемой стратегией, создаваемой через tag-based template фабрики
+- **AppLogger** — singleton-логгер приложения, который используется в `main.cpp` для фиксации ошибок и ключевых этапов обработки.
 - **QDirIterator / QFile / QSaveFile + OpenSSL EVP** — используются для обхода файловой системы, потокового чтения/записи файлов, атомарной замены результата и криптографических операций.
 
 ## Алгоритм шифрования
@@ -52,12 +53,16 @@
 #### CryptoManager
 ```mermaid
 classDiagram
-    class OpenSslTag
+    class MainApplication
 
     class ICryptoStrategy {
         <<interface>>
         +EncryptFile(filePath, password)
         +DecryptFile(filePath, password)
+    }
+
+    class AppLogger {
+        +Log(level, message, file, line, function)
     }
 
     class OpenSslCryptoStrategy {
@@ -89,25 +94,22 @@ classDiagram
         +GetCryptoManager~OpenSslTag~()
     }
 
-    ICryptoManager <|.. CryptoManager
-    ICryptoStrategy <|.. OpenSslCryptoStrategy
-    CryptoManager o--> ICryptoStrategy
-
-    CryptoManagerFactory ..> CryptoStrategyFactory
-    CryptoManagerFactory ..> CryptoManager
-    CryptoStrategyFactory ..> OpenSslTag
-    CryptoManagerFactory ..> OpenSslTag
-    CryptoStrategyFactory ..> OpenSslCryptoStrategy
-```
-
-#### RecursiveStepper
-```mermaid
-classDiagram
     class RecursiveStepper {
         -QString dirPath_
         +RecursiveStepper(dirPath)
         +BuildIndex() FileSystemIndex
     }
+
+    ICryptoManager <|.. CryptoManager
+    ICryptoStrategy <|.. OpenSslCryptoStrategy
+    CryptoManager o--> ICryptoStrategy
+    MainApplication ..> AppLogger
+    MainApplication ..> CryptoManagerFactory
+    MainApplication ..> RecursiveStepper
+
+    CryptoManagerFactory ..> CryptoStrategyFactory
+    CryptoManagerFactory ..> CryptoManager
+    CryptoStrategyFactory ..> OpenSslCryptoStrategy
 ```
 ## Инструкция для пользователя
 Сборка проекта производится следующим образом:

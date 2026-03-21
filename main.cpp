@@ -2,6 +2,7 @@
 /// @brief Главное приложение
 /// @author Artemenko Anton
 #include <crypto_manager_factory.hpp>
+#include <logger_factory.hpp>
 #include <recursive_stepper.hpp>
 
 #include <QCoreApplication>
@@ -102,6 +103,7 @@ int main(int argc, char *argv[])
     QTextStream cin(stdin);
     QTextStream cout(stdout);
     QTextStream cerr(stderr);
+    const auto appLogger = logger::GetLogger<logger::AppLoggerTag>();
 
     QString mode;
     QString path;
@@ -119,6 +121,8 @@ int main(int argc, char *argv[])
 
             if (backendName != "openssl")
             {
+                appLogger->Log(logger::LogLevel::Error, "Unknown backend: " + backendName, __FILE__, __LINE__,
+                               __FUNCTION__);
                 cerr << "Unknown backend\n";
                 cerr << errorMsg;
                 return 1;
@@ -127,6 +131,8 @@ int main(int argc, char *argv[])
     }
     else
     {
+        appLogger->Log(logger::LogLevel::Error, "Invalid arguments: expected at least mode and path", __FILE__, __LINE__,
+                       __FUNCTION__);
         cerr << errorMsg;
         return 1;
     }
@@ -135,6 +141,7 @@ int main(int argc, char *argv[])
 
     if (!dir.exists())
     {
+        appLogger->Log(logger::LogLevel::Error, "Directory does not exist: " + path, __FILE__, __LINE__, __FUNCTION__);
         cerr << "Directory does not exist\n";
         return 1;
     }
@@ -143,12 +150,14 @@ int main(int argc, char *argv[])
 
     if (password.isEmpty())
     {
+        appLogger->Log(logger::LogLevel::Warning, "Empty password is not allowed", __FILE__, __LINE__, __FUNCTION__);
         cerr << "Password must not be empty\n";
         return 1;
     }
 
     if (password.size() > std::numeric_limits<int>::max() / 4)
     {
+        appLogger->Log(logger::LogLevel::Error, "Password is too long", __FILE__, __LINE__, __FUNCTION__);
         SecureClear(password);
         cerr << "Password is too long\n";
         return 1;
@@ -164,10 +173,15 @@ int main(int argc, char *argv[])
 
     if (!encoder)
     {
+        appLogger->Log(logger::LogLevel::Error, "Failed to create crypto manager for selected backend", __FILE__, __LINE__,
+                       __FUNCTION__);
         SecureClear(password);
         cerr << "Failed to create crypto manager for selected backend\n";
         return 1;
     }
+
+    appLogger->Log(logger::LogLevel::Info, "Processing started. Mode: " + mode + ", Path: " + path, __FILE__, __LINE__,
+                   __FUNCTION__);
 
     for (const auto &file : stepper->BuildIndex())
     {
@@ -183,6 +197,7 @@ int main(int argc, char *argv[])
         }
         else
         {
+            appLogger->Log(logger::LogLevel::Error, "Invalid mode: " + mode, __FILE__, __LINE__, __FUNCTION__);
             SecureClear(password);
             cerr << errorMsg;
             return 1;
@@ -190,10 +205,12 @@ int main(int argc, char *argv[])
 
         if (result)
         {
+            appLogger->Log(logger::LogLevel::Info, "File processed: " + file, __FILE__, __LINE__, __FUNCTION__);
             cout << "File processed: " << file << "\n";
         }
         else
         {
+            appLogger->Log(logger::LogLevel::Warning, "File skipped: " + file, __FILE__, __LINE__, __FUNCTION__);
             cout << "File skipped: " << file << "\n";
         }
     }
