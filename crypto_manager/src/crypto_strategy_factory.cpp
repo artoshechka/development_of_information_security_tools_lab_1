@@ -5,18 +5,9 @@
 #include <crypto_strategy_factory.hpp>
 #include <src/openssl_crypto_strategy.hpp>
 
-std::unique_ptr<crypto_manager::ICryptoStrategy> crypto_manager::CreateCryptoStrategy(const CryptoBackend backend)
+template <>
+std::unique_ptr<crypto_manager::ICryptoStrategy> crypto_manager::CreateCryptoStrategy<
+    crypto_manager::OpenSslCryptoBackendTag>()
 {
-    switch (backend)
-    {
-        case CryptoBackend::OpenSsl:
-            return std::make_unique<OpenSslCryptoStrategy>();
-    }
-
-    return nullptr;
-}
-
-std::unique_ptr<crypto_manager::ICryptoStrategy> crypto_manager::CreateCryptoStrategy()
-{
-    return CreateCryptoStrategy(CryptoBackend::OpenSsl);
+    return std::make_unique<OpenSslCryptoStrategy>();
 }

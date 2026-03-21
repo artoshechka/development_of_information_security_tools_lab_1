@@ -12,12 +12,9 @@ std::shared_ptr<crypto_manager::ICryptoManager> crypto_manager::CreateCryptoMana
     return std::make_shared<CryptoManager>(std::move(cryptoStrategy));
 }
 
-std::shared_ptr<crypto_manager::ICryptoManager> crypto_manager::GetCryptoManager(const CryptoBackend backend)
+template <>
+std::shared_ptr<crypto_manager::ICryptoManager> crypto_manager::GetCryptoManager<
+    crypto_manager::OpenSslCryptoManagerTag>()
 {
-    return CreateCryptoManager(CreateCryptoStrategy(backend));
-}
-
-std::shared_ptr<crypto_manager::ICryptoManager> crypto_manager::GetCryptoManager()
-{
-    return CreateCryptoManager(CreateCryptoStrategy());
+    return CreateCryptoManager(CreateCryptoStrategy<OpenSslCryptoBackendTag>());
 }

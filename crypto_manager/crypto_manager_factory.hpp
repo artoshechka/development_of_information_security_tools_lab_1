@@ -11,19 +11,21 @@
 
 namespace crypto_manager
 {
+/// @brief Fwd decl тега OpenSSL менеджера для фабрики.
+struct OpenSslCryptoManagerTag;
+
 /// @brief Создает менеджер криптографических операций с указанной стратегией.
 /// @param[in] cryptoStrategy Конкретная крипто-стратегия.
 /// @return Умный указатель на менеджер криптографических операций.
 std::shared_ptr<ICryptoManager> CreateCryptoManager(std::unique_ptr<ICryptoStrategy> cryptoStrategy);
 
-/// @brief Создает менеджер криптографических операций по выбранному backend'у.
-/// @param[in] backend Идентификатор криптографического backend'а.
+/// @brief Создает менеджер криптографических операций по backend-тегу.
+/// @tparam TBackendTag Тип тега backend'а.
 /// @return Умный указатель на менеджер криптографических операций.
-std::shared_ptr<ICryptoManager> GetCryptoManager(CryptoBackend backend);
+template <typename TBackendTag> std::shared_ptr<ICryptoManager> GetCryptoManager();
 
-/// @brief Создает менеджер криптографических операций с backend'ом по умолчанию.
-/// @return Умный указатель на менеджер криптографических операций.
-std::shared_ptr<ICryptoManager> GetCryptoManager();
+/// @brief Специализация фабрики менеджера для OpenSSL backend'а.
+template <> std::shared_ptr<ICryptoManager> GetCryptoManager<OpenSslCryptoManagerTag>();
 
 } // namespace crypto_manager
 

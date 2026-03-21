@@ -10,20 +10,16 @@
 
 namespace crypto_manager
 {
-/// @brief Тип доступной реализации криптографической стратегии.
-enum class CryptoBackend
-{
-    OpenSsl,
-};
+/// @brief Fwd decl тега OpenSSL backend для фабрики.
+struct OpenSslCryptoBackendTag;
 
-/// @brief Создает криптографическую стратегию по выбранному backend'у.
-/// @param[in] backend Идентификатор криптографического backend'а.
-/// @return Уникальный указатель на стратегию или `nullptr`, если backend не поддерживается.
-std::unique_ptr<ICryptoStrategy> CreateCryptoStrategy(CryptoBackend backend);
-
-/// @brief Создает криптографическую стратегию с backend'ом по умолчанию.
+/// @brief Создает криптографическую стратегию по backend-тегу.
+/// @tparam TBackendTag Тип тега backend'а.
 /// @return Уникальный указатель на стратегию.
-std::unique_ptr<ICryptoStrategy> CreateCryptoStrategy();
+template <typename TBackendTag> std::unique_ptr<ICryptoStrategy> CreateCryptoStrategy();
+
+/// @brief Специализация фабрики для OpenSSL backend'а.
+template <> std::unique_ptr<ICryptoStrategy> CreateCryptoStrategy<OpenSslCryptoBackendTag>();
 
 } // namespace crypto_manager
 

@@ -24,21 +24,6 @@ namespace
 const QString errorMsg = "Usage:\nprogram encrypt <path>\nprogram decrypt <path>\n"
                          "Backends: openssl\n";
 
-/// @brief Преобразует строковое имя backend в перечисление.
-/// @param[in] backendName Имя backend из аргументов командной строки.
-/// @param[out] backend Результат преобразования.
-/// @return `true`, если backend распознан.
-static bool ParseBackend(const QString &backendName, crypto_manager::CryptoBackend &backend)
-{
-    if (backendName == "openssl")
-    {
-        backend = crypto_manager::CryptoBackend::OpenSsl;
-        return true;
-    }
-
-    return false;
-}
-
 /// @brief Скрытое чтение пароля из консоли (для Unix/macOS).
 static QString ReadPassword(QTextStream &cin, QTextStream &cout)
 {
@@ -120,7 +105,7 @@ int main(int argc, char *argv[])
 
     QString mode;
     QString path;
-    crypto_manager::CryptoBackend backend = crypto_manager::CryptoBackend::OpenSsl;
+    QString backendName = "openssl";
 
     // Проверка аргументов
     if (argc >= 3)
@@ -130,7 +115,9 @@ int main(int argc, char *argv[])
 
         if (argc >= 4)
         {
-            if (!ParseBackend(QString::fromLocal8Bit(argv[3]).toLower(), backend))
+            backendName = QString::fromLocal8Bit(argv[3]).toLower();
+
+            if (backendName != "openssl")
             {
                 cerr << "Unknown backend\n";
                 cerr << errorMsg;
@@ -168,7 +155,12 @@ int main(int argc, char *argv[])
     }
 
     const auto &stepper = std::make_unique<recursive_stepper::RecursiveStepper>(path);
-    const auto &encoder = crypto_manager::GetCryptoManager(backend);
+    std::shared_ptr<crypto_manager::ICryptoManager> encoder;
+
+    if (backendName == "openssl")
+    {
+        encoder = crypto_manager::GetCryptoManager<crypto_manager::OpenSslCryptoManagerTag>();
+    }
 
     if (!encoder)
     {
