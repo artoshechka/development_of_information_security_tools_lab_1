@@ -7,6 +7,7 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
 
 add_library(${PROJECT_NAME} STATIC
     src/app_logger.cpp
+    src/app_sys_logger.cpp
     src/log_entry_stream.cpp
     src/logger_factory.cpp
     src/log_settings.cpp

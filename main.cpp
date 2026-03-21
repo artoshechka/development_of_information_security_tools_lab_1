@@ -3,6 +3,7 @@
 /// @author Artemenko Anton
 #include <crypto_manager_factory.hpp>
 #include <logger_factory.hpp>
+#include <logger_macros.hpp>
 #include <recursive_stepper.hpp>
 
 #include <QCoreApplication>
@@ -104,6 +105,7 @@ int main(int argc, char *argv[])
     QTextStream cout(stdout);
     QTextStream cerr(stderr);
     const auto appLogger = logger::GetLogger<logger::AppLoggerTag>();
+    const auto appSysLogger = logger::GetLogger<logger::AppSysLoggerTag>();
 
     QString mode;
     QString path;
@@ -121,9 +123,7 @@ int main(int argc, char *argv[])
 
             if (backendName != "openssl")
             {
-                appLogger->Log(logger::LogLevel::Error, "Unknown backend: " + backendName, __FILE__, __LINE__,
-                               __FUNCTION__);
-                cerr << "Unknown backend\n";
+                LogError(appLogger) << "Unknown backend: " << backendName;
                 cerr << errorMsg;
                 return 1;
             }
@@ -131,8 +131,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        appLogger->Log(logger::LogLevel::Error, "Invalid arguments: expected at least mode and path", __FILE__, __LINE__,
-                       __FUNCTION__);
+        LogError(appLogger) << "Invalid arguments: expected at least mode and path";
         cerr << errorMsg;
         return 1;
     }
@@ -141,8 +140,7 @@ int main(int argc, char *argv[])
 
     if (!dir.exists())
     {
-        appLogger->Log(logger::LogLevel::Error, "Directory does not exist: " + path, __FILE__, __LINE__, __FUNCTION__);
-        cerr << "Directory does not exist\n";
+        LogError(appLogger) << "Directory does not exist: " << path;
         return 1;
     }
 
@@ -150,38 +148,33 @@ int main(int argc, char *argv[])
 
     if (password.isEmpty())
     {
-        appLogger->Log(logger::LogLevel::Warning, "Empty password is not allowed", __FILE__, __LINE__, __FUNCTION__);
-        cerr << "Password must not be empty\n";
+        LogWarning(appLogger) << "Empty password is not allowed";
         return 1;
     }
 
     if (password.size() > std::numeric_limits<int>::max() / 4)
     {
-        appLogger->Log(logger::LogLevel::Error, "Password is too long", __FILE__, __LINE__, __FUNCTION__);
+        LogError(appLogger) << "Password is too long";
         SecureClear(password);
-        cerr << "Password is too long\n";
         return 1;
     }
 
-    const auto &stepper = std::make_unique<recursive_stepper::RecursiveStepper>(path);
+    const auto &stepper = std::make_unique<recursive_stepper::RecursiveStepper>(path, appSysLogger);
     std::shared_ptr<crypto_manager::ICryptoManager> encoder;
 
     if (backendName == "openssl")
     {
-        encoder = crypto_manager::GetCryptoManager<crypto_manager::OpenSslTag>();
+        encoder = crypto_manager::GetCryptoManager<crypto_manager::OpenSslTag>(appSysLogger);
     }
 
     if (!encoder)
     {
-        appLogger->Log(logger::LogLevel::Error, "Failed to create crypto manager for selected backend", __FILE__, __LINE__,
-                       __FUNCTION__);
+        LogError(appLogger) << "Failed to create crypto manager for selected backend";
         SecureClear(password);
-        cerr << "Failed to create crypto manager for selected backend\n";
         return 1;
     }
 
-    appLogger->Log(logger::LogLevel::Info, "Processing started. Mode: " + mode + ", Path: " + path, __FILE__, __LINE__,
-                   __FUNCTION__);
+    LogInfo(appLogger) << "Processing started. Mode: " << mode << ", Path: " << path;
 
     for (const auto &file : stepper->BuildIndex())
     {
@@ -197,7 +190,7 @@ int main(int argc, char *argv[])
         }
         else
         {
-            appLogger->Log(logger::LogLevel::Error, "Invalid mode: " + mode, __FILE__, __LINE__, __FUNCTION__);
+            LogError(appLogger) << "Invalid mode: " << mode;
             SecureClear(password);
             cerr << errorMsg;
             return 1;
@@ -205,12 +198,12 @@ int main(int argc, char *argv[])
 
         if (result)
         {
-            appLogger->Log(logger::LogLevel::Info, "File processed: " + file, __FILE__, __LINE__, __FUNCTION__);
+            LogInfo(appLogger) << "File processed: " << file;
             cout << "File processed: " << file << "\n";
         }
         else
         {
-            appLogger->Log(logger::LogLevel::Warning, "File skipped: " + file, __FILE__, __LINE__, __FUNCTION__);
+            LogWarning(appLogger) << "File skipped: " << file;
             cout << "File skipped: " << file << "\n";
         }
     }

@@ -7,13 +7,14 @@
 #include <memory>
 
 std::shared_ptr<crypto_manager::ICryptoManager> crypto_manager::CreateCryptoManager(
-    std::unique_ptr<ICryptoStrategy> cryptoStrategy)
+    std::unique_ptr<ICryptoStrategy> cryptoStrategy, const std::shared_ptr<logger::ILogger> &logger)
 {
-    return std::make_shared<CryptoManager>(std::move(cryptoStrategy));
+    return std::make_shared<CryptoManager>(std::move(cryptoStrategy), logger);
 }
 
 template <>
-std::shared_ptr<crypto_manager::ICryptoManager> crypto_manager::GetCryptoManager<crypto_manager::OpenSslTag>()
+std::shared_ptr<crypto_manager::ICryptoManager>
+crypto_manager::GetCryptoManager<crypto_manager::OpenSslTag>(const std::shared_ptr<logger::ILogger> &logger)
 {
-    return CreateCryptoManager(CreateCryptoStrategy<OpenSslTag>());
+    return CreateCryptoManager(CreateCryptoStrategy<OpenSslTag>(logger), logger);
 }
