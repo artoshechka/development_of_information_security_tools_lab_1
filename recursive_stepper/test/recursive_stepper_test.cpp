@@ -53,3 +53,19 @@ TEST(RecursiveStepperTest, BuildIndexReturnsEmptyForMissingDirectory)
 
     EXPECT_TRUE(index.isEmpty());
 }
+
+TEST(RecursiveStepperTest, BuildIndexReturnsEmptyForExistingDirectoryWithoutFiles)
+{
+    QTemporaryDir tempDir;
+    ASSERT_TRUE(tempDir.isValid());
+
+    QDir root(tempDir.path());
+    ASSERT_TRUE(root.mkpath("empty/subdir"));
+
+    auto logger = logger::GetLogger<logger::AppSysLoggerTag>();
+    recursive_stepper::RecursiveStepper stepper(tempDir.path(), logger);
+
+    const recursive_stepper::FileSystemIndex index = stepper.BuildIndex();
+
+    EXPECT_TRUE(index.isEmpty());
+}
