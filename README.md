@@ -262,3 +262,28 @@ cmake --build .
 * **Test Case 8:** Запуск программы с путем к директории, которая отсутствует в файловой системе.
 *  **Test Case 9:** Запуск программы с недопустимым значением режима работы (отличным от `encrypt` и `decrypt`).
 *  **Test Case 10:** Обработка пустой директории, не содержащей файлов для шифрования или дешифрования.
+
+### Unit-тесты (GoogleTest)
+
+Сборка и запуск unit-тестов:
+
+```bash
+cmake -S . -B build -DRECURSIVE_ENCODER_BUILD_TESTS=ON
+cmake --build build --target build_tests --parallel
+ctest --test-dir build --output-on-failure
+```
+
+### Генерация отчета о покрытии
+
+Ниже команда полного цикла: конфигурация coverage-сборки, сборка приложения и тестов,
+прогон тестов и генерация HTML-отчета покрытия только по исходникам .cpp проекта.
+
+```bash
+cmake -S . -B build-coverage -DRECURSIVE_ENCODER_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="--coverage -O0 -g" && cmake --build build-coverage --target recursive_encoder build_tests --parallel && ctest --test-dir build-coverage --output-on-failure && (cd build-coverage && rm -f coverage_cpp* && gcovr -r .. --gcov-executable "$(xcrun --find llvm-cov) gcov" --filter ".*/(main\.cpp|recursive_stepper/src/.*\.cpp|logger/src/.*\.cpp|crypto_manager/src/.*\.cpp)$" --exclude ".*/test/.*" --exclude ".*/CMakeFiles/.*" --exclude ".*/build-coverage/.*" --exclude ".*CMakeCXXCompilerId\.cpp$" --exclude ".*\.hpp$" --html-details coverage_cpp.html --print-summary)
+```
+
+Открыть отчет:
+
+```bash
+open build-coverage/coverage_cpp.html
+```

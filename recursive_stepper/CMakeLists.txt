@@ -16,7 +16,13 @@ target_include_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
     logger
-
     PRIVATE
         Qt${QT_VERSION_MAJOR}::Core
+)
+
+create_test(
+    recursive_stepper_test
+    test/recursive_stepper_test.cpp
+    LINK_LIBS
+        ${PROJECT_NAME}
 )
