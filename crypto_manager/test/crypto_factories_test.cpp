@@ -13,12 +13,12 @@ namespace
 class FakeCryptoStrategy final : public crypto_manager::ICryptoStrategy
 {
    public:
-    bool EncryptFile(const QString&, const QString&) override
+    bool PerformEncryptionOperation(const QString&, const QString&) override
     {
         return true;
     }
 
-    bool DecryptFile(const QString&, const QString&) override
+    bool PerformDecryptionOperation(const QString&, const QString&) override
     {
         return true;
     }
