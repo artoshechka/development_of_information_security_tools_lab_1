@@ -177,4 +177,3 @@ TEST(RecursiveStepperTest, BuildIndexMixedFilesAndDirectories)
     EXPECT_TRUE(index.contains(file2));
     EXPECT_FALSE(index.contains(QFileInfo(root.filePath("subdir/.hidden")).absoluteFilePath()));
 }
-
