@@ -185,4 +185,3 @@ TEST(CryptoManagerTest, SetCryptoStrategyIgnoresNullStrategy)
     EXPECT_TRUE(result);
     EXPECT_EQ(strategyRaw->encryptCalls_, 1);
 }
-
