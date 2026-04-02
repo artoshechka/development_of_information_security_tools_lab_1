@@ -32,6 +32,12 @@ bool RecursiveStepper::ShouldSkipFile(const QFileInfo& fileInfo) const
         return true;
     }
 
+    if (fileInfo.size() == 0)
+    {
+        LogWarning(logger_) << "Skipping empty file: " << fileInfo.absoluteFilePath();
+        return true;
+    }
+
     const QString suffix = fileInfo.suffix().toLower();
 
     // Пропускаем ярлыки
